@@ -1,0 +1,22 @@
+#ifndef GAME_CONFIG_PIN_MAP_H
+#define GAME_CONFIG_PIN_MAP_H
+
+#include "game2/config/reference/reference_input_profile.h"
+
+// NUCLEO-L476RG mapping aligned with reference project.
+#define GAME_PIN_JOYSTICK_X 5
+#define GAME_PIN_JOYSTICK_Y 4
+#define GAME_PIN_JOYSTICK_SW 3
+
+#define GAME_PIN_BUTTON_A 8
+#define GAME_PIN_BUTTON_B 9
+#define GAME_PIN_BUTTON_C 10
+#define GAME_PIN_BUTTON_D 2
+
+#define GAME_JOYSTICK_CENTER GAME_REF_JOYSTICK_CENTER
+#define GAME_JOYSTICK_DEADZONE GAME_REF_JOYSTICK_DEADZONE
+
+#define GAME_BUTTON_ACTIVE_LOW GAME_REF_BUTTON_ACTIVE_LOW
+#define GAME_BUTTON_USE_PULLUP GAME_REF_BUTTONS_USE_PULLUP
+
+#endif

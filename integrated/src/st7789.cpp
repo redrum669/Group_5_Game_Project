@@ -1,0 +1,266 @@
+#include "st7789.h"
+#include "config.h"
+#include <SPI.h>
+
+ST7789 lcd;
+
+// Hardware SPI helpers for ST7789 (PB13=SCK, PB15=MOSI = SPI2 on STM32L476)
+// CS (PB12), DC (PB11), RST (PB2) remain GPIO-controlled.
+
+static inline void spiWrite(uint8_t data) {
+    SPI.transfer(data);
+}
+
+static inline void spiWrite16(uint16_t data) {
+    SPI.transfer16(data);
+}
+
+static const uint8_t font5x7[][5] = {
+    {0x00,0x00,0x00,0x00,0x00},{0x00,0x00,0x5F,0x00,0x00},{0x00,0x07,0x00,0x07,0x00},{0x14,0x7F,0x14,0x7F,0x14},
+    {0x24,0x2A,0x7F,0x2A,0x12},{0x23,0x13,0x08,0x64,0x62},{0x36,0x49,0x55,0x22,0x50},{0x00,0x05,0x03,0x00,0x00},
+    {0x00,0x1C,0x22,0x41,0x00},{0x00,0x41,0x22,0x1C,0x00},{0x14,0x08,0x3E,0x08,0x14},{0x08,0x08,0x3E,0x08,0x08},
+    {0x00,0x50,0x30,0x00,0x00},{0x08,0x08,0x08,0x08,0x08},{0x00,0x60,0x60,0x00,0x00},{0x20,0x10,0x08,0x04,0x02},
+    {0x3E,0x51,0x49,0x45,0x3E},{0x00,0x42,0x7F,0x40,0x00},{0x42,0x61,0x51,0x49,0x46},{0x21,0x41,0x45,0x4B,0x31},
+    {0x18,0x14,0x12,0x7F,0x10},{0x27,0x45,0x45,0x45,0x39},{0x3C,0x4A,0x49,0x49,0x30},{0x01,0x71,0x09,0x05,0x03},
+    {0x36,0x49,0x49,0x49,0x36},{0x06,0x49,0x49,0x29,0x1E},{0x00,0x36,0x36,0x00,0x00},{0x00,0x56,0x36,0x00,0x00},
+    {0x08,0x14,0x22,0x41,0x00},{0x14,0x14,0x14,0x14,0x14},{0x00,0x41,0x22,0x14,0x08},{0x02,0x01,0x51,0x09,0x06},
+    {0x32,0x49,0x79,0x41,0x3E},{0x7E,0x11,0x11,0x11,0x7E},{0x7F,0x49,0x49,0x49,0x36},{0x3E,0x41,0x41,0x41,0x22},
+    {0x7F,0x41,0x41,0x22,0x1C},{0x7F,0x49,0x49,0x49,0x41},{0x7F,0x09,0x09,0x09,0x01},{0x3E,0x41,0x49,0x49,0x7A},
+    {0x7F,0x08,0x08,0x08,0x7F},{0x00,0x41,0x7F,0x41,0x00},{0x20,0x40,0x41,0x3F,0x01},{0x7F,0x08,0x14,0x22,0x41},
+    {0x7F,0x40,0x40,0x40,0x40},{0x7F,0x02,0x0C,0x02,0x7F},{0x7F,0x04,0x08,0x10,0x7F},{0x3E,0x41,0x41,0x41,0x3E},
+    {0x7F,0x09,0x09,0x09,0x06},{0x3E,0x41,0x51,0x21,0x5E},{0x7F,0x09,0x19,0x29,0x46},{0x46,0x49,0x49,0x49,0x31},
+    {0x01,0x01,0x7F,0x01,0x01},{0x3F,0x40,0x40,0x40,0x3F},{0x1F,0x20,0x40,0x20,0x1F},{0x3F,0x40,0x38,0x40,0x3F},
+    {0x63,0x14,0x08,0x14,0x63},{0x07,0x08,0x70,0x08,0x07},{0x61,0x51,0x49,0x45,0x43},{0x00,0x7F,0x41,0x41,0x00},
+    {0x02,0x04,0x08,0x10,0x20},{0x00,0x41,0x41,0x7F,0x00},{0x04,0x02,0x01,0x02,0x04},{0x40,0x40,0x40,0x40,0x40},
+    {0x00,0x01,0x02,0x04,0x00},{0x20,0x54,0x54,0x54,0x78},{0x7F,0x48,0x44,0x44,0x38},{0x38,0x44,0x44,0x44,0x20},
+    {0x38,0x44,0x44,0x48,0x7F},{0x38,0x54,0x54,0x54,0x18},{0x08,0x7E,0x09,0x01,0x02},{0x08,0x14,0x54,0x54,0x3C},
+    {0x7F,0x08,0x04,0x04,0x78},{0x00,0x44,0x7D,0x40,0x00},{0x20,0x40,0x44,0x3D,0x00},{0x7F,0x10,0x28,0x44,0x00},
+    {0x00,0x41,0x7F,0x40,0x00},{0x7C,0x04,0x18,0x04,0x78},{0x7C,0x08,0x04,0x04,0x78},{0x38,0x44,0x44,0x44,0x38},
+    {0x7C,0x14,0x14,0x14,0x08},{0x08,0x14,0x14,0x18,0x7C},{0x7C,0x08,0x04,0x04,0x08},{0x48,0x54,0x54,0x54,0x20},
+    {0x04,0x3F,0x44,0x40,0x20},{0x3C,0x40,0x40,0x20,0x7C},{0x1C,0x20,0x40,0x20,0x1C},{0x3C,0x40,0x30,0x40,0x3C},
+    {0x44,0x28,0x10,0x28,0x44},{0x0C,0x50,0x50,0x50,0x3C},{0x44,0x64,0x54,0x4C,0x44},{0x00,0x08,0x36,0x41,0x00},
+    {0x00,0x00,0x7F,0x00,0x00},{0x00,0x41,0x36,0x08,0x00},{0x08,0x04,0x08,0x10,0x08}
+};
+
+void ST7789::writeCommand(uint8_t cmd) {
+    digitalWrite(LCD_DC, LOW);
+    digitalWrite(LCD_CS, LOW);
+    spiWrite(cmd);
+    digitalWrite(LCD_CS, HIGH);
+}
+
+void ST7789::writeData(uint8_t data) {
+    digitalWrite(LCD_DC, HIGH);
+    digitalWrite(LCD_CS, LOW);
+    spiWrite(data);
+    digitalWrite(LCD_CS, HIGH);
+}
+
+void ST7789::writeDataBuffer(const uint8_t* data, size_t len) {
+    digitalWrite(LCD_DC, HIGH);
+    digitalWrite(LCD_CS, LOW);
+    for (size_t i = 0; i < len; i++) {
+        spiWrite(data[i]);
+    }
+    digitalWrite(LCD_CS, HIGH);
+}
+
+void ST7789::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+    x0 += LCD_X_OFFSET; x1 += LCD_X_OFFSET;
+    y0 += LCD_Y_OFFSET; y1 += LCD_Y_OFFSET;
+
+    writeCommand(0x2A);
+    writeData(x0 >> 8); writeData(x0 & 0xFF);
+    writeData(x1 >> 8); writeData(x1 & 0xFF);
+
+    writeCommand(0x2B);
+    writeData(y0 >> 8); writeData(y0 & 0xFF);
+    writeData(y1 >> 8); writeData(y1 & 0xFF);
+}
+
+void ST7789::reset() {
+    digitalWrite(LCD_RST, HIGH); delay(20);
+    digitalWrite(LCD_RST, LOW);  delay(20);
+    digitalWrite(LCD_RST, HIGH); delay(120);
+}
+
+void ST7789::begin() {
+    pinMode(LCD_CS, OUTPUT); pinMode(LCD_DC, OUTPUT); pinMode(LCD_RST, OUTPUT);
+    pinMode(LCD_BL, OUTPUT);
+
+    digitalWrite(LCD_CS, HIGH); digitalWrite(LCD_DC, HIGH); digitalWrite(LCD_BL, HIGH);
+
+    // Hardware SPI initialization: PB13=SCK, PB15=MOSI (SPI2 on STM32L476)
+    // MISO must be set to a pin on the same SPI peripheral for spi_init() to succeed.
+    SPI.setMOSI(LCD_MOSI);
+    SPI.setMISO(PB14);  // SPI2 MISO (not physically connected, but required for peripheral matching)
+    SPI.setSCLK(LCD_SCK);
+    SPI.begin();
+    SPI.beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));
+    // Note: SPI.endTransaction() is never called because the LCD owns the bus exclusively.
+
+    reset();
+
+    writeCommand(0xB2); writeData(0x0C); writeData(0x0C); writeData(0x00); writeData(0x33); writeData(0x33);
+    writeCommand(0xB7); writeData(0x35);
+    writeCommand(0xBB); writeData(0x19);
+    writeCommand(0xC0); writeData(0x2C);
+    writeCommand(0xC2); writeData(0x01);
+    writeCommand(0xC3); writeData(0x12);
+    writeCommand(0xC4); writeData(0x20);
+    writeCommand(0xC6); writeData(0x0F);
+    writeCommand(0xD0); writeData(0xA4); writeData(0xA1);
+    writeCommand(0x01); delay(150);
+    writeCommand(0x11); delay(120);
+    writeCommand(0x3A); writeData(0x55); delay(10);
+    writeCommand(0x36); writeData(0x00);
+    writeCommand(0x21); delay(10);
+    writeCommand(0x13); delay(10);
+    writeCommand(0x29); delay(10);
+}
+
+void ST7789::setRotation(uint8_t r) {
+    writeCommand(0x36);
+    switch (r & 3) {
+        case 0: writeData(0x00); break;
+        case 1: writeData(0x60); break;
+        case 2: writeData(0xC0); break;
+        case 3: writeData(0xA0); break;
+    }
+}
+
+void ST7789::setRenderTarget(uint16_t* buffer, int16_t x, int16_t y, int16_t w, int16_t h) {
+    rtBuf = buffer;
+    rtX = x; rtY = y; rtW = w; rtH = h;
+}
+
+void ST7789::drawPixel(int16_t x, int16_t y, uint16_t color) {
+    if (rtBuf) {
+        if (x >= rtX && x < rtX + rtW && y >= rtY && y < rtY + rtH) {
+            rtBuf[(y - rtY) * rtW + (x - rtX)] = color;
+        }
+        return;
+    }
+    if (x < 0 || y < 0 || x >= LCD_WIDTH || y >= LCD_HEIGHT) return;
+    setAddrWindow(x, y, x, y);
+    digitalWrite(LCD_DC, LOW);
+    digitalWrite(LCD_CS, LOW);
+    spiWrite(0x2C);
+    digitalWrite(LCD_DC, HIGH);
+    spiWrite16(color);
+    digitalWrite(LCD_CS, HIGH);
+}
+
+void ST7789::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) { fillRect(x, y, w, 1, color); }
+void ST7789::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) { fillRect(x, y, 1, h, color); }
+
+void ST7789::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    if (rtBuf) {
+        int x0 = x, y0 = y, x1 = x + w - 1, y1 = y + h - 1;
+        if (x0 < rtX) x0 = rtX;
+        if (y0 < rtY) y0 = rtY;
+        if (x1 >= rtX + rtW - 1) x1 = rtX + rtW - 1;
+        if (y1 >= rtY + rtH - 1) y1 = rtY + rtH - 1;
+        for (int ry = y0; ry <= y1; ry++) {
+            for (int rx = x0; rx <= x1; rx++) {
+                rtBuf[(ry - rtY) * rtW + (rx - rtX)] = color;
+            }
+        }
+        return;
+    }
+    if (x >= LCD_WIDTH || y >= LCD_HEIGHT) return;
+    if (x + w - 1 < 0 || y + h - 1 < 0) return;
+
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > LCD_WIDTH) w = LCD_WIDTH - x;
+    if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
+    if (w <= 0 || h <= 0) return;
+
+    setAddrWindow(x, y, x + w - 1, y + h - 1);
+    digitalWrite(LCD_DC, LOW);
+    digitalWrite(LCD_CS, LOW);
+    spiWrite(0x2C);
+    digitalWrite(LCD_DC, HIGH);
+    uint32_t total = (uint32_t)w * h;
+    for (uint32_t i = 0; i < total; i++) {
+        spiWrite16(color);
+    }
+    digitalWrite(LCD_CS, HIGH);
+}
+
+void ST7789::drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    drawFastHLine(x, y, w, color);
+    drawFastHLine(x, y + h - 1, w, color);
+    drawFastVLine(x, y, h, color);
+    drawFastVLine(x + w - 1, y, h, color);
+}
+
+void ST7789::pushImage(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data) {
+    setAddrWindow(x, y, x + w - 1, y + h - 1);
+    digitalWrite(LCD_DC, LOW);
+    digitalWrite(LCD_CS, LOW);
+    spiWrite(0x2C);
+    digitalWrite(LCD_DC, HIGH);
+    int32_t total = (int32_t)w * h;
+    for (int32_t i = 0; i < total; i++) {
+        spiWrite16(data[i]);
+    }
+    digitalWrite(LCD_CS, HIGH);
+}
+
+void ST7789::drawBitmapTransparent(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data, uint16_t transparentColor) {
+    for (int16_t j = 0; j < h; j++) {
+        for (int16_t i = 0; i < w; i++) {
+            uint16_t color = data[j * w + i];
+            if (color != transparentColor) {
+                drawPixel(x + i, y + j, color);
+            }
+        }
+    }
+}
+
+void ST7789::drawSubBitmapTransparent(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t* data, int16_t src_w, uint16_t transparentColor) {
+    for (int16_t j = 0; j < h; j++) {
+        for (int16_t i = 0; i < w; i++) {
+            uint16_t color = data[j * src_w + i];
+            if (color != transparentColor) {
+                drawPixel(x + i, y + j, color);
+            }
+        }
+    }
+}
+
+void ST7789::fillScreen(uint16_t color) {
+    fillRect(0, 0, LCD_WIDTH, LCD_HEIGHT, color);
+}
+
+void ST7789::drawChar5x7(int16_t x, int16_t y, char c, uint16_t fg, uint16_t bg, uint8_t scale) {
+    if (c < 32 || c > 126) c = '?';
+    const uint8_t* bitmap = font5x7[c - 32];
+    for (uint8_t col = 0; col < 5; col++) {
+        uint8_t line = bitmap[col];
+        for (uint8_t row = 0; row < 8; row++) {
+            uint16_t color = (line & 0x01) ? fg : bg;
+            if (scale == 1) {
+                drawPixel(x + col, y + row, color);
+            } else {
+                fillRect(x + col * scale, y + row * scale, scale, scale, color);
+            }
+            line >>= 1;
+        }
+    }
+    if (scale == 1) {
+        fillRect(x + 5, y, 1, 8, bg);
+    } else {
+        fillRect(x + 5 * scale, y, scale, 8 * scale, bg);
+    }
+}
+
+void ST7789::drawText(int16_t x, int16_t y, const char* text, uint16_t fg, uint16_t bg, uint8_t scale) {
+    while (*text) {
+        drawChar5x7(x, y, *text, fg, bg, scale);
+        x += 6 * scale;
+        text++;
+    }
+}
